@@ -9,5 +9,6 @@ lazy val root = project
   .settings(
     name := "verifythis2020",
     stainlessEnabled := true,
+    Compile / run / mainClass := Some("pgp.Main"),
   )
 
