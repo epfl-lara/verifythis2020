@@ -45,8 +45,8 @@ case class ListMap[A, B](toList: List[(A, B)]) {
     case Cons(key, rest) => (this - key) -- rest
   }
 
-  def forall(p: ((A, B)) => Boolean): Boolean = {
-    toList.forall(p)
+  def forall(p: (A, B) => Boolean): Boolean = {
+    toList.forall { case (a, b) => p(a, b) }
   }
 }
 

@@ -17,20 +17,23 @@ case class Server(
    *  - A key is valid if its fingerprint is registered in keys
    */
   val inv_keys: Boolean = {
-    keys.forall { case (fingerprint, key) =>
-      key.fingerprint == fingerprint
-    }
+    keys.forall(validKey)
   }
 
+  def validKey(fingerprint: Fingerprint, key: Key): Boolean = {
+    key.fingerprint == fingerprint
+  }
 
   /** Invariant:
     * - All keys must be registered via the correct fingerprint
     * - Upload tokens must be for valid keys
     */
   val inv_uploaded: Boolean = {
-    uploaded.forall { case (token, fingerprint) =>
-      keys.contains(fingerprint)
-    }
+    uploaded.forall(validUploaded)
+  }
+
+  def validUploaded(token: Token, fingerprint: Fingerprint): Boolean = {
+    keys.contains(fingerprint)
   }
 
   /** Invariant:
@@ -38,11 +41,15 @@ case class Server(
     * - Pending validations must be for identity addresses associated for the respective key
     */
   val inv_pending: Boolean = {
-    pending.forall { case (token, (fingerprint, identity)) =>
-      keys.contains(fingerprint) && {
-        val key = keys(fingerprint)
-        key.identities.contains(identity)
-      }
+    pending.forall(validPending)
+  }
+
+  def validPending(token: Token, value: (Fingerprint, Identity)): Boolean = {
+    val (fingerprint, identity) = value
+
+    keys.contains(fingerprint) && {
+      val key = keys(fingerprint)
+      key.identities.contains(identity)
     }
   }
 
@@ -51,11 +58,13 @@ case class Server(
     * - Confirmed identity must be valid for the associated key
     */
   val inv_confirmed: Boolean = {
-    confirmed.forall { case (identity, fingerprint) =>
-      keys.contains(fingerprint) && {
-        val key = keys(fingerprint)
-        key.identities contains identity
-      }
+    confirmed.forall(validConfirmed)
+  }
+
+  def validConfirmed(identity: Identity, fingerprint: Fingerprint): Boolean = {
+    keys.contains(fingerprint) && {
+      val key = keys(fingerprint)
+      key.identities.contains(identity)
     }
   }
 
@@ -63,9 +72,11 @@ case class Server(
     * - Management tokens must be for valid keys
     */
   val inv_managed: Boolean = {
-    managed.forall { case (token, fingerprint) =>
-      keys.contains(fingerprint)
-    }
+    managed.forall(validManaged)
+  }
+
+  def validManaged(token: Token, fingerprint: Fingerprint): Boolean = {
+    keys.contains(fingerprint)
   }
 
   require {
@@ -135,8 +146,13 @@ case class Server(
     }
 
     val token = Token.unique
-    keys += (fingerprint -> key)
-    uploaded += (token -> fingerprint)
+
+    assert(validKey(fingerprint, key))
+    keys += (fingerprint -> key)       // Affected invariant: inv_keys
+
+    assert(validUploaded(token, fingerprint))
+    uploaded += (token -> fingerprint) // Affected invariant: inv_uploaded
+
     token
   }
 
@@ -158,6 +174,11 @@ case class Server(
           _ = notif(identity, email)
         } yield (token, identity)
 
+        assert(toAdd.forall { case (token, identity) =>
+          validPending(token, (fingerprint, identity))
+        })
+
+        // Affected invariant: inv_pending
         pending ++= toAdd.map { case (token, identity) =>
           token -> (fingerprint, identity)
         }
@@ -173,8 +194,11 @@ case class Server(
   def verify(token: Token): Unit = {
     if (pending.contains(token)) {
       val (fingerprint, identity) = pending(token)
-      pending -= token
-      confirmed += (identity -> fingerprint)
+
+      pending -= token // Affected invariant: inv_pending
+
+      assert(validConfirmed(identity, fingerprint))
+      confirmed += (identity -> fingerprint) // Affected invariant: inv_confirmed
     }
   }
 
@@ -186,8 +210,12 @@ case class Server(
   def requestManage(identity: Identity): Unit = {
     if (confirmed.contains(identity)) {
       val token = Token.unique
+
       val fingerprint = confirmed(identity)
-      managed += (token -> fingerprint)
+
+      assert(validManaged(token, fingerprint))
+      managed += (token -> fingerprint) // Affected invariant: inv_managed
+
       val email = EMail("manage", fingerprint, token)
       notif(identity, email)
     }
@@ -202,8 +230,9 @@ case class Server(
     if (managed.contains(token)) {
       val fingerprint = managed(token)
       val key = keys(fingerprint)
+
       if (identities.content.subsetOf(key.identities.content)) {
-        confirmed --= identities
+        confirmed --= identities // Affected invariant: inv_confirmed
       }
     }
   }
