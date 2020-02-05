@@ -52,75 +52,81 @@ object Main {
     "gfxguy@sbcglobal.net",
   )
 
-  // def main(args: Array[String]): Unit = {
-  //   val identities = addresses.map(Identity(_))
+  def window[A](list: List[A], size: Int): List[List[A]] = {
+    if (list.length <= size) List(list)
+    else {
+      List(list.take(size)) ++ window(list.drop(size), size)
+    }
+  }
 
-  //   lazy val server = new Server(validateIdent)
+  def main(args: Array[String]): Unit = {
+    val identities = addresses.map(Identity(_))
 
-  //   // lazy val insecureServer = new ServerOld(validateIdentInsec)
+    lazy val server = new Server(validateIdent)
 
-  //   val validateIdent: (Identity, EMail) => Unit = (identity, email) => {
-  //     log(s"> Received validating email. Verifying $identity",SECURE)
-  //     server.verify(email.token)
-  //   }
+    def validateIdent(identity: Identity, email: EMail): Unit = {
+      log(s"> Received validating email. Verifying $identity",SECURE)
+      server.verify(email.token)
+    }
 
-  //   // val validateIdentInsec: (Identity, EMail) => Unit = (identity, email) => {
-  //   //   log(s"> Received validating email. Verifying $identity",INSECURE)
-  //   //   insecureServer.verify(email.token)
-  //   // }
-
-
-
-
-  //   log("Initializing both servers with test data...",BOTH)
-  //   log("Generating random keys...",BOTH)
-
-  //   val keys = (identities sliding(3, 3) map Key.random).toSet
-
-  //   log(s"Generated ${keys.size} keys with three identities each.",BOTH)
-  //   log("Uploading keys to servers...",BOTH)
-
-  //   val tokens = keys map (k => (k, server.upload(k)))
-  //   // val tokensInsecure = keys map (k => (k, insecureServer.upload(k)))
-
-  //   log("Keys uploaded. Currently there should be 30 identities when querying by fingerprint/keyId",BOTH)
-
-  //   def validatedByFingerprint(s: Server) = keys
-  //     .flatMap(k => s.byFingerprint(k.fingerprint))
-  //     .flatMap(_.identities)
-
-  //   def validatedByEmail(s: Server) = keys
-  //       .flatMap(_.identities)
-  //       .flatMap (s.byEmail)
-  //       .flatMap(_.identities)
-
-  //   log(s"Validated (Fingerprint/KeyId): ${validatedByFingerprint(server).size}",SECURE)
-  //   // log(s"Validated (Fingerprint/KeyId): ${validatedByFingerprint(insecureServer).size}",INSECURE)
+    // val validateIdentInsec: (Identity, EMail) => Unit = (identity, email) => {
+    //   log(s"> Received validating email. Verifying $identity",INSECURE)
+    //   insecureServer.verify(email.token)
+    // }
 
 
-  //   log("Currently, there should be 0 identities when querying a key by one of its associated identities", BOTH)
+    log("Initializing both servers with test data...",BOTH)
+    log("Generating random keys...",BOTH)
 
-  //   log(s"Validated (Email): ${validatedByEmail(server).size}",SECURE)
-  //   // log(s"Validated (Email): ${validatedByEmail(insecureServer).size}",INSECURE)
+    val keys = window(identities, 3).map(Key.random)
+
+    log(s"Generated ${keys.length} keys with three identities each.",BOTH)
+    log("Uploading keys to servers...",BOTH)
+
+    val tokens = keys.map(k => (k, server.upload(k)))
+    // val tokensInsecure = keys map (k => (k, insecureServer.upload(k)))
+
+    log("Keys uploaded. Currently there should be 30 identities when querying by fingerprint/keyId",BOTH)
+
+    def optionToList[A](opt: Option[A]): List[A] = {
+      opt.map(List(_)).getOrElse(List.empty[A])
+    }
+
+    def validatedByFingerprint(s: Server) = keys
+      .flatMap(k => optionToList(s.byFingerprint(k.fingerprint)))
+      .flatMap(_.identities)
+
+    def validatedByEmail(s: Server) = keys
+        .flatMap(_.identities)
+        .flatMap(k => optionToList(s.byEmail(k)))
+        .flatMap(_.identities)
+
+    log(s"Validated (Fingerprint/KeyId): ${validatedByFingerprint(server).size}",SECURE)
+    // log(s"Validated (Fingerprint/KeyId): ${validatedByFingerprint(insecureServer).size}",INSECURE)
 
 
-  //   log("Verifying exactly one identity for 5 keys.",BOTH)
-  //   (
-  //     tokens
-  //     zip (tokensInsecure)
-  //     take(5)
-  //     foreach { case (sec, insec) =>
-  //       val identSec = sec._1.identities.take(1)
-  //       val identInsec = insec._1.identities.take(1)
-  //       server.requestVerify(sec._2, identSec)
-  //       // insecureServer.requestVerify(insec._2, identInsec)
-  //     }
-  //   )
+    log("Currently, there should be 0 identities when querying a key by one of its associated identities", BOTH)
+
+    log(s"Validated (Email): ${validatedByEmail(server).size}",SECURE)
+    // log(s"Validated (Email): ${validatedByEmail(insecureServer).size}",INSECURE)
 
 
-  //   log("There should be 5 validated identities",BOTH)
+    log("Verifying exactly one identity for 5 keys.",BOTH)
+    tokens
+      // .zip(tokensInsecure)
+      .take(5)
+      // .foreach { case (sec, insec) =>
+      .map { sec =>
+        val identSec = sec._1.identities.take(1)
+        // val identInsec = insec._1.identities.take(1)
+        server.requestVerify(sec._2, identSec)
+        // insecureServer.requestVerify(insec._2, identInsec)
+      }
 
-  //   log(s"Validated (Email): ${validatedByEmail(server).size}", SECURE)
-  //   // log(s"Validated (Email): ${validatedByEmail(insecureServer).size}", INSECURE)
-  // }
+
+    log("There should be 5 validated identities",BOTH)
+
+    log(s"Validated (Email): ${validatedByEmail(server).size}", SECURE)
+    // log(s"Validated (Email): ${validatedByEmail(insecureServer).size}", INSECURE)
+  }
 }
