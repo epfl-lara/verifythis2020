@@ -52,5 +52,37 @@ case class ListMap[A, B](toList: List[(A, B)]) {
 
 object ListMap {
   def empty[A, B]: ListMap[A, B] = ListMap(List.empty[(A, B)])
+
+  object lemmas {
+    def listFilterValidProp[A](@induct l: List[A], p: A => Boolean, filter: A => Boolean): Boolean = {
+      require(l.forall(p))
+      val result = l.filter(filter)
+      result.forall(p)
+    }.holds
+
+    def listInsertValidProp[A](l: List[A], a: A, p: A => Boolean): Boolean = {
+      require(l.forall(p) && p(a))
+      val result = Cons(a, l)
+      result.forall(p)
+    }.holds
+
+    def listInsertAllValidProp[A](l: List[A], @induct as: List[A], p: A => Boolean): Boolean = {
+      require(l.forall(p) && as.forall(p))
+      val result = as ++ l
+      result.forall(p)
+    }.holds
+
+    def insertValidProp[A, B](lm: ListMap[A, B], kv: (A, B), p: (A, B) => Boolean): Boolean = {
+      require(lm.forall(p) && p(kv._1, kv._2))
+      val result = lm + kv
+      result.forall(p)
+    }.holds
+
+    def insertAllValidProp[A, B](lm: ListMap[A, B], @induct kvs: List[(A, B)], p: (A, B) => Boolean): Boolean = {
+      require(lm.forall(p) && kvs.forall { case (a, b) => p(a, b) })
+      val result = lm ++ kvs
+      result.forall(p)
+    }.holds
+  }
 }
 
