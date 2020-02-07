@@ -19,12 +19,7 @@ case class ListMap[A, B](toList: List[(A, B)]) {
   }
 
   def +(keyValue: (A, B)): ListMap[A, B] = {
-    val key = keyValue._1
-    if (contains(key)) {
-      ListMap(keyValue :: toList.filter(_._1 != key))
-    } else {
-      ListMap(keyValue :: toList)
-    }
+    ListMap(keyValue :: toList)
   }
 
   def ++(keyValues: List[(A, B)]): ListMap[A, B] = keyValues match {

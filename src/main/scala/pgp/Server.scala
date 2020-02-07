@@ -171,16 +171,19 @@ case class Server(
           identity <- identities
           token = Token.unique
           email = EMail("verify", fingerprint, token)
-          _ = notif(identity, email)
-        } yield (token, identity)
+        } yield (token, email, identity)
 
-        assert(toAdd.forall { case (token, identity) =>
+        assert(toAdd.forall { case (token, _, identity) =>
           validPending(token, (fingerprint, identity))
         })
 
         // Affected invariant: inv_pending
-        pending ++= toAdd.map { case (token, identity) =>
+        pending ++= toAdd.map { case (token, _, identity) =>
           token -> (fingerprint, identity)
+        }
+
+        toAdd.map { case (_, email, identity) =>
+          notif(identity, email)
         }
       }
     }

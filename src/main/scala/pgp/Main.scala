@@ -69,12 +69,6 @@ object Main {
       server.verify(email.token)
     }
 
-    // val validateIdentInsec: (Identity, EMail) => Unit = (identity, email) => {
-    //   log(s"> Received validating email. Verifying $identity",INSECURE)
-    //   insecureServer.verify(email.token)
-    // }
-
-
     log("Initializing both servers with test data...",BOTH)
     log("Generating random keys...",BOTH)
 
@@ -96,8 +90,8 @@ object Main {
       .flatMap(k => optionToList(s.byFingerprint(k.fingerprint)))
       .flatMap(_.identities)
 
-    def validatedByEmail(s: Server) = keys
-        .flatMap(_.identities)
+    def validatedByEmail(s: Server) =
+        identities
         .flatMap(k => optionToList(s.byEmail(k)))
         .flatMap(_.identities)
 
@@ -109,6 +103,18 @@ object Main {
 
     log(s"Validated (Email): ${validatedByEmail(server).size}",SECURE)
     // log(s"Validated (Email): ${validatedByEmail(insecureServer).size}",INSECURE)
+
+
+    // val token = tokens(0)._2
+    // val id = tokens(0)._1.identities.take(1)
+    // println("token", token)
+    // println("id", id)
+    // server.requestVerify(token, id)
+
+    // println("server.pending", server.pending)
+    // println(server.confirmed.get(id(0)))
+    // println(server.byEmail(id(0)))
+    // println(validatedByEmail(server))
 
 
     log("Verifying exactly one identity for 5 keys.",BOTH)

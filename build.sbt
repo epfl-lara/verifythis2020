@@ -8,7 +8,7 @@ lazy val root = project
   .enablePlugins(StainlessPlugin)
   .settings(
     name := "verifythis2020",
-    stainlessEnabled := true,
+    stainlessEnabled := false,
     Compile / run / mainClass := Some("pgp.Main"),
   )
 
