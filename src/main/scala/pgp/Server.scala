@@ -161,32 +161,20 @@ case class Server(
         assert(toAdd.forall { case (k, v) => validPending(keys, k, v) })
 
         val newPending = pending ++ toAdd
-        assert(invPending(keys, pending))
-        assert(pending.forall { case (token, value) => validPending(keys, token, value) })
+        // This lemma ensures that invPending still holds after adding `toAdd`
         insertAllValidProp(pending, toAdd, validPending(keys, _, _))
-        assert((pending ++ toAdd).forall { case (token, value) => validPending(keys, token, value) })
-        assert(newPending.forall { case (token, value) => validPending(keys, token, value) })
         assert(invPending(keys, newPending))
 
         pending = newPending
 
-        assert(pending.forall { case (token, value) => validPending(keys, token, value) })
-        assert(invPending(keys, pending))
-        // This lemma ensures that inv_pending still holds after adding `newPending`
+        toTreat.map { case (_, email, identity) =>
+          notif(identity, email)
+        }
 
-        // val oldPending = pending
-        // pending ++= newPending
-        // assert(pending == oldPending ++ newPending)
-        // assert((oldPending ++ newPending).forall(validPending))
-        // assert(pending.forall(validPending))
-
-
-      //   toAdd.map { case (_, email, identity) =>
-      //     notif(identity, email)
-      //   }
+        ()
       }
     }
-  }
+  }.ensuring(_ => invariant)
 
   /**
    * Verify an identity address by a token received via identity.
