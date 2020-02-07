@@ -66,11 +66,15 @@ case class Server(
    * Note that this key should be in keys, too.
    */
   def byEmail(identity: Identity): Option[Key] = {
-    for {
-      fingerprint <- confirmed.get(identity)
-      key = keys.get(fingerprint)
-    } yield filtered(key.get)
-  }
+    require(invariant)
+    val fingerprintOpt = confirmed.get(identity)
+    getForall(confirmed, identity, validConfirmed(keys, _, _))
+    assert(fingerprintOpt.forall(fingerprint => validConfirmed(keys, identity, fingerprint)))
+    fingerprintOpt match {
+      case None() => None[Key]()
+      case Some(fingerprint) => Some[Key](filtered(keys(fingerprint)))
+    }
+  }.ensuring(_ => invariant)
 
   /**
    * Upload a new key to the server.
@@ -136,7 +140,7 @@ case class Server(
     if (uploaded.contains(from)) {
       val fingerprint = uploaded(from)
       assert(invUploaded(keys, uploaded))
-      getForall(uploaded, from, validUploaded(keys, _, _))
+      applyForall(uploaded, from, validUploaded(keys, _, _))
       val key = keys(fingerprint)
       if (identities.content.subsetOf(key.identities.content)) {
 
