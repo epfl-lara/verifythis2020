@@ -30,7 +30,10 @@ sealed trait Key {
   def keyId: KeyId
   def fingerprint: Fingerprint
   def identities: List[Identity]
-  def restrictedTo(ids: List[Identity]): Key
+  def restrictedTo(ids: List[Identity]): Key = {
+    require(ids.content subsetOf identities.content)
+    (??? : Key)
+  }
 }
 
 case class PGPKey(
