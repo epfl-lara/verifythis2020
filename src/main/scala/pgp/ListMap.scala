@@ -85,14 +85,24 @@ object ListMap {
     }.ensuring(_ => (lm ++ kvs).forall(p))
 
     @opaque
-    def getForall[A, B](lm: ListMap[A, B], k: A, p: (A, B) => Boolean): Unit = {
+    def applyForall[A, B](lm: ListMap[A, B], k: A, p: (A, B) => Boolean): Unit = {
       require(lm.forall(p) && lm.contains(k))
+      decreases(lm.toList.size)
+
+      if (!lm.isEmpty && lm.toList.head._1 != k)
+        applyForall(lm.tail, k, p)
+
+    }.ensuring(_ => p(k, lm(k)))
+
+    @opaque
+    def getForall[A, B](lm: ListMap[A, B], k: A, p: (A, B) => Boolean): Unit = {
+      require(lm.forall(p))
       decreases(lm.toList.size)
 
       if (!lm.isEmpty && lm.toList.head._1 != k)
         getForall(lm.tail, k, p)
 
-    }.ensuring(_ => p(k, lm(k)))
+    }.ensuring(_ => lm.get(k).forall(v => p(k, v)))
   }
 }
 
