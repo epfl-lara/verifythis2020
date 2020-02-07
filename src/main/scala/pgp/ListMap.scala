@@ -5,6 +5,18 @@ import stainless.collection._
 import stainless.annotation._
 
 case class ListMap[A, B](toList: List[(A, B)]) {
+  def isEmpty: Boolean = toList.isEmpty
+
+  def head: (A, B) = {
+    require(!isEmpty)
+    toList.head
+  }
+
+  def tail: ListMap[A, B] = {
+    require(!isEmpty)
+    ListMap(toList.tail)
+  }
+
   def contains(key: A): Boolean = {
     get(key).isDefined
   }
@@ -22,9 +34,12 @@ case class ListMap[A, B](toList: List[(A, B)]) {
     ListMap(keyValue :: toList)
   }
 
-  def ++(keyValues: List[(A, B)]): ListMap[A, B] = keyValues match {
-    case Nil()                => this
-    case Cons(keyValue, rest) => (this + keyValue) ++ rest
+  def ++(keyValues: List[(A, B)]): ListMap[A, B] = {
+    decreases(keyValues)
+    keyValues match {
+      case Nil()                => this
+      case Cons(keyValue, rest) => (this + keyValue) ++ rest
+    }
   }
 
   def -(key: A): ListMap[A, B] = {
@@ -49,35 +64,35 @@ object ListMap {
   def empty[A, B]: ListMap[A, B] = ListMap(List.empty[(A, B)])
 
   object lemmas {
-    def listFilterValidProp[A](@induct l: List[A], p: A => Boolean, filter: A => Boolean): Boolean = {
+    def listFilterValidProp[A](@induct l: List[A], p: A => Boolean, f: A => Boolean): Unit = {
       require(l.forall(p))
-      val result = l.filter(filter)
-      result.forall(p)
-    }.holds
 
-    def listInsertValidProp[A](l: List[A], a: A, p: A => Boolean): Boolean = {
-      require(l.forall(p) && p(a))
-      val result = Cons(a, l)
-      result.forall(p)
-    }.holds
+    }.ensuring(_ => l.filter(f).forall(p))
 
-    def listInsertAllValidProp[A](l: List[A], @induct as: List[A], p: A => Boolean): Boolean = {
+    def listAppendValidProp[A](l: List[A], @induct as: List[A], p: A => Boolean): Unit = {
       require(l.forall(p) && as.forall(p))
-      val result = as ++ l
-      result.forall(p)
-    }.holds
 
-    def insertValidProp[A, B](lm: ListMap[A, B], kv: (A, B), p: (A, B) => Boolean): Boolean = {
-      require(lm.forall(p) && p(kv._1, kv._2))
-      val result = lm + kv
-      result.forall(p)
-    }.holds
+    }.ensuring(_ => (as ++ l).forall(p))
 
-    def insertAllValidProp[A, B](lm: ListMap[A, B], @induct kvs: List[(A, B)], p: (A, B) => Boolean): Boolean = {
+    @opaque
+    def insertAllValidProp[A, B](lm: ListMap[A, B], kvs: List[(A, B)], p: (A, B) => Boolean): Unit = {
       require(lm.forall(p) && kvs.forall { case (a, b) => p(a, b) })
-      val result = lm ++ kvs
-      result.forall(p)
-    }.holds
+      decreases(kvs)
+
+      if (!kvs.isEmpty)
+        insertAllValidProp(lm + kvs.head, kvs.tail, p)
+
+    }.ensuring(_ => (lm ++ kvs).forall(p))
+
+    @opaque
+    def getForall[A, B](lm: ListMap[A, B], k: A, p: (A, B) => Boolean): Unit = {
+      require(lm.forall(p) && lm.contains(k))
+      decreases(lm.toList.size)
+
+      if (!lm.isEmpty && lm.toList.head._1 != k)
+        getForall(lm.tail, k, p)
+
+    }.ensuring(_ => p(k, lm(k)))
   }
 }
 

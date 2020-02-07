@@ -11,4 +11,3 @@ lazy val root = project
     stainlessEnabled := false,
     Compile / run / mainClass := Some("pgp.Main"),
   )
-
