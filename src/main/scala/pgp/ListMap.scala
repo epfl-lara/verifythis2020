@@ -3,6 +3,7 @@ package pgp
 import stainless.lang._
 import stainless.collection._
 import stainless.annotation._
+import stainless.proof._
 
 import ListUtils._
 
@@ -189,20 +190,23 @@ object ListMap {
     @opaque
     def keysOfSoundLemma2[A, B](l: List[(A, B)], lm: ListMap[A, B], b: B): Unit = {
       require {
-        val filtered = lm.toList.filter(_._2 == b);
+        val filtered = lm.toList.filter(_._2 == b)
         l.forall(p => filtered.contains((p._1, b))) &&
         l.forall(filtered.contains)
       }
       decreases(l)
 
+      val filtered = lm.toList.filter(_._2 == b)
+
       if (!l.isEmpty) {
-        keysOfSoundLemma2(l.tail, lm, b) // gives us
+        keysOfSoundLemma2(l.tail, lm, b) // gives us:
         assert(l.tail.map(_._1).forall(key => lm.get(key) == Some(b)))
 
-        uniqueImage(lm, l.head._1, l.head._2)
+        uniqueImage(lm, l.head._1, l.head._2) // gives us:
         assert(lm.get(l.head._1) == Some(l.head._2))
 
-        Utils.assume(l.map(_._1).forall(key => lm.get(key) == Some(b)))
+        forallContained(filtered, (kv: (A, B)) => kv._2 == b, l.head) // gives us:
+        assert(l.head._2 == b)
       }
 
     }.ensuring(_ =>
