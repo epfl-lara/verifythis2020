@@ -51,12 +51,23 @@ case class Server(
    * Yields all identities that belong to a certain key and have been confirmed by email
    */
   private def filtered(key: Key): Key = {
-    def confirmedByFingerprint(key: Key) = {
-      for ((ident, fingerprint) <- confirmed.toList if key.fingerprint == fingerprint)
-        yield ident
+    val pairs = confirmed.toList.filter {
+      case (identity, fingerprint) => key.fingerprint == fingerprint
     }
 
-    key.restrictedTo(confirmedByFingerprint(key))
+    assert(pairs.forall {
+      case (identity, fingerprint) => key.fingerprint == fingerprint
+    })
+
+    val identities = pairs.map(_._1)
+    // def confirmedByFingerprint(key: Key) = {
+
+    //   for ((ident, fingerprint) <- confirmed.toList if key.fingerprint == fingerprint)
+    //     yield ident
+    // }
+
+    // key.restrictedTo(confirmedByFingerprint(key))
+    (??? : Key)
   }
 
 
@@ -76,30 +87,30 @@ case class Server(
     }
   }.ensuring(_ => invariant)
 
-  /**
-   * Upload a new key to the server.
-   *
-   * The returned token must be used to requestVerify,
-   * to prevent spamming users with such requests.
-   *
-   * Note the check for fingerprint collisions.
-   */
-  def upload(key: Key): Token = {
-    val fingerprint = key.fingerprint
-    if (keys.contains(fingerprint)) {
-      assert(keys(fingerprint) == key)
-    }
+  // /**
+  //  * Upload a new key to the server.
+  //  *
+  //  * The returned token must be used to requestVerify,
+  //  * to prevent spamming users with such requests.
+  //  *
+  //  * Note the check for fingerprint collisions.
+  //  */
+  // def upload(key: Key): Token = {
+  //   val fingerprint = key.fingerprint
+  //   if (keys.contains(fingerprint)) {
+  //     assert(keys(fingerprint) == key)
+  //   }
 
-    val token = Token.unique
+  //   val token = Token.unique
 
-    assert(validKey(fingerprint, key))
-    keys += (fingerprint -> key)       // Affected invariant: inv_keys
+  //   assert(validKey(fingerprint, key))
+  //   keys += (fingerprint -> key)       // Affected invariant: inv_keys
 
-    assert(validUploaded(keys, token, fingerprint))
-    uploaded += (token -> fingerprint) // Affected invariant: inv_uploaded
+  //   assert(validUploaded(keys, token, fingerprint))
+  //   uploaded += (token -> fingerprint) // Affected invariant: inv_uploaded
 
-    token
-  }
+  //   token
+  // }
 
   def requestVerifyLemma1(@induct l: List[Identity], fingerprint: Fingerprint): Unit = {
     require(keys.contains(fingerprint) && l.forall(keys(fingerprint).identities.contains))
@@ -144,7 +155,7 @@ case class Server(
       val key = keys(fingerprint)
       if (identities.content.subsetOf(key.identities.content)) {
 
-        ListLemmas.subsetContains(identities, key.identities) // gives us:
+        ListUtils.subsetContains(identities, key.identities) // gives us:
         assert(identities.forall(key.identities.contains))
 
         val toTreat = identities.map { identity =>
@@ -180,21 +191,21 @@ case class Server(
     }
   }.ensuring(_ => invariant)
 
-  /**
-   * Verify an identity address by a token received via identity.
-   *
-   * Note that we keep the mapping in uploaded to allow further verifications.
-   */
-  def verify(token: Token): Unit = {
-    if (pending.contains(token)) {
-      val (fingerprint, identity) = pending(token)
+  // /**
+  //  * Verify an identity address by a token received via identity.
+  //  *
+  //  * Note that we keep the mapping in uploaded to allow further verifications.
+  //  */
+  // def verify(token: Token): Unit = {
+  //   if (pending.contains(token)) {
+  //     val (fingerprint, identity) = pending(token)
 
-      pending -= token // Affected invariant: inv_pending
+  //     pending -= token // Affected invariant: inv_pending
 
-      assert(validConfirmed(keys, identity, fingerprint))
-      confirmed += (identity -> fingerprint) // Affected invariant: inv_confirmed
-    }
-  }
+  //     assert(validConfirmed(keys, identity, fingerprint))
+  //     confirmed += (identity -> fingerprint) // Affected invariant: inv_confirmed
+  //   }
+  // }
 
   // /**
   //  * Request a management token for a given confirmed identity.
