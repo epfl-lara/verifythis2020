@@ -106,22 +106,58 @@ object ListMap {
     }.ensuring(_ => (lm ++ kvs).forall(p))
 
     @opaque
-    def applyForall[A, B](lm: ListMap[A, B], k: A, p: (A, B) => Boolean): Unit = {
+    def filterStillContains[A, B](l: List[(A, B)], a1: A, a2: A): Unit = {
+      require(a1 != a2)
+      decreases(l)
+
+      if (!l.isEmpty && l.head._1 != a2)
+        filterStillContains(l.tail, a1, a2)
+
+    }.ensuring(_ =>
+      l.find(_._1 == a2) == l.filter(_._1 != a1).find(_._1 == a2)
+    )
+
+    @opaque
+    def addApplyDifferent[A, B](lm: ListMap[A, B], a: A, b: B, a0: A): Unit = {
+      require(lm.contains(a0) && a0 != a)
+
+      filterStillContains(lm.toList, a, a0)
+
+    }.ensuring(_ =>
+      (lm + (a -> b))(a0) == lm(a0)
+    )
+
+    @opaque
+    def addStillContains[A, B](lm: ListMap[A, B], a: A, b: B, a0: A): Unit = {
+      require(lm.contains(a0))
+
+      assert(lm.get(a0).isDefined)
+      assert(lm.toList.find(_._1 == a0).isDefined)
+
+      if (a != a0)
+        filterStillContains(lm.toList, a, a0)
+
+    }.ensuring(_ =>
+      (lm + (a, b)).contains(a0)
+    )
+
+    @opaque
+    def applyForall[A, B](lm: ListMap[A, B], p: (A, B) => Boolean, k: A): Unit = {
       require(lm.forall(p) && lm.contains(k))
       decreases(lm.toList.size)
 
       if (!lm.isEmpty && lm.toList.head._1 != k)
-        applyForall(lm.tail, k, p)
+        applyForall(lm.tail, p, k)
 
     }.ensuring(_ => p(k, lm(k)))
 
     @opaque
-    def getForall[A, B](lm: ListMap[A, B], k: A, p: (A, B) => Boolean): Unit = {
+    def getForall[A, B](lm: ListMap[A, B], p: (A, B) => Boolean, k: A): Unit = {
       require(lm.forall(p))
       decreases(lm.toList.size)
 
       if (!lm.isEmpty && lm.toList.head._1 != k)
-        getForall(lm.tail, k, p)
+        getForall(lm.tail, p, k)
 
     }.ensuring(_ => lm.get(k).forall(v => p(k, v)))
 

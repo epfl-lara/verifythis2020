@@ -193,4 +193,15 @@ object ListUtils {
   }.ensuring(_ =>
     l.forall(l.contains)
   )
+
+  @opaque
+  def forallContainsSubset[T](l1: List[T], l2: List[T]): Unit = {
+    require(l1.forall(l2.contains))
+    if (!l1.isEmpty) {
+      forallContainsSubset(l1.tail, l2) // gives us:
+      assert(l1.tail.content.subsetOf(l2.content))
+    }
+  }.ensuring(_ =>
+    l1.content.subsetOf(l2.content)
+  )
 }
