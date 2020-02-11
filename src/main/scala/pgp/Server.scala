@@ -244,40 +244,51 @@ case class Server(
     }
   }.ensuring(_ => invariant)
 
-  // /**
-  //  * Request a management token for a given confirmed identity.
-  //  *
-  //  * Note that this should be rate-limited.
-  //  */
-  // def requestManage(identity: Identity): Unit = {
-  //   if (confirmed.contains(identity)) {
-  //     val token = Token.unique
+  /**
+   * Request a management token for a given confirmed identity.
+   *
+   * Note that this should be rate-limited.
+   */
+  def requestManage(identity: Identity): Unit = {
+    require(invariant)
+    if (confirmed.contains(identity)) {
+      val token = Token.unique
 
-  //     val fingerprint = confirmed(identity)
+      val fingerprint = confirmed(identity)
 
-  //     assert(validManaged(token, fingerprint))
-  //     managed += (token -> fingerprint) // Affected invariant: inv_managed
+      applyForall(confirmed, validConfirmed(keys), identity)
 
-  //     val email = EMail("manage", fingerprint, token)
-  //     notif(identity, email)
-  //   }
-  // }
+      val newManaged = managed + (token -> fingerprint)
 
-  // /**
-  //  * Revoke confirmation of a set of identities given a management key.
-  //  *
-  //  * Only if all addresses match the respective key, they will be invalidated.
-  //  */
-  // def revoke(token: Token, identities: List[Identity]): Unit = {
-  //   if (managed.contains(token)) {
-  //     val fingerprint = managed(token)
-  //     val key = keys(fingerprint)
+      addValidProp(managed, containedFingerprint(keys), token, fingerprint) // gives us:
+      assert(invManaged(keys, newManaged))
 
-  //     if (identities.content.subsetOf(key.identities.content)) {
-  //       confirmed --= identities // Affected invariant: inv_confirmed
-  //     }
-  //   }
-  // }
+      managed = newManaged
+
+      val email = EMail("manage", fingerprint, token)
+      notif(identity, email)
+    }
+  }.ensuring(_ => invariant)
+
+  /**
+   * Revoke confirmation of a set of identities given a management key.
+   *
+   * Only if all addresses match the respective key, they will be invalidated.
+   */
+  def revoke(token: Token, identities: List[Identity]): Unit = {
+    if (managed.contains(token)) {
+      val fingerprint = managed(token)
+      val key = keys(fingerprint)
+
+      applyForall(managed, containedFingerprint(keys), token)
+
+      if (identities.content.subsetOf(key.identities.content)) {
+
+        val newConfirmed = confirmed -- identities
+        confirmed = newConfirmed
+      }
+    }
+  }
 }
 
 
