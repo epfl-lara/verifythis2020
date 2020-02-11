@@ -87,7 +87,11 @@ case class Server(
   def byEmail(identity: Identity): Option[Key] = {
     require(invariant)
     val fingerprintOpt = confirmed.get(identity)
-    getForall(confirmed, validConfirmed(keys, _, _), identity)
+    getForall(
+      confirmed,
+      (p: (Identity, Fingerprint)) => validConfirmed(keys, p._1, p._2),
+      identity
+    )
     assert(fingerprintOpt.forall(fingerprint => validConfirmed(keys, identity, fingerprint)))
     fingerprintOpt match {
       case None() => None[Key]()
@@ -113,9 +117,9 @@ case class Server(
 
     val token = Token.unique
 
-    assert(validKey(fingerprint, key))
+    assert(fingerprintMatchKey(fingerprint, key))
 
-    addValidProp(keys, validKey, fingerprint, key) // gives us:
+    addValidProp(keys, fingerprintMatchKey, fingerprint, key) // gives us:
     assert(invKeys(keys + (fingerprint -> key)))
 
     moreContainedKeys(keys, uploaded, fingerprint, key) // gives us:
@@ -152,24 +156,28 @@ case class Server(
       (token, EMail("verify", fingerprint, token), identity)
     }.forall {
       case (token, _, identity) =>
-        validPending(keys, token, fingerprint, identity)
+        validPending(keys)(token, (fingerprint, identity))
     }
   }
 
-  def requestVerifyLemma2(l: List[(Token, EMail, Identity)], fingerprint: Fingerprint): Unit = {
+  def requestVerifyLemma2(@induct l: List[(Token, EMail, Identity)], fingerprint: Fingerprint): Unit = {
     require(l.forall {
       case (token, _, identity) =>
-        validPending(keys, token, fingerprint, identity)
+        validPending(keys)(token, (fingerprint, identity))
     })
-    decreases(l)
-
-    if (!l.isEmpty) requestVerifyLemma2(l.tail, fingerprint)
 
   } ensuring { _ =>
     l.map { case (token, _, identity) =>
       token -> (fingerprint, identity)
-    }.forall { case (k, v) => validPending(keys, k, v._1, v._2) }
+    }.forall(validPending(keys))
   }
+
+  // def requestVerifyLemma3(@induct l: List[(Token, (Fingerprint, Identity))], fingerprint: Fingerprint): Unit = {
+  //   require(l.forall { case (k, (v1, v2)) => validPending(keys, k, v1, v2) })
+
+  // } ensuring { _ =>
+  //   l.forall { case (k, v) => validPending(keys, k, v._1, v._2) }
+  // }
 
   /**
    * Request to verify a set of identity addresses, given a token returned by upload.
@@ -181,10 +189,10 @@ case class Server(
     require(invariant)
     if (uploaded.contains(from)) {
       val fingerprint = uploaded(from)
-      assert(invUploaded(keys, uploaded))
-      assert(uploaded.forall { case (_, fingerprint) => keys.contains(fingerprint) })
-      applyForall(uploaded, (token: Token, fingerprint: Fingerprint) => keys.contains(fingerprint), from)
+
+      applyForall(uploaded, validUploaded(keys), from) // gives us:
       val key = keys(fingerprint)
+
       if (identities.content.subsetOf(key.identities.content)) {
 
         ListUtils.subsetContains(identities, key.identities) // gives us:
@@ -197,7 +205,7 @@ case class Server(
 
         requestVerifyLemma1(identities, fingerprint) // gives us:
         assert(toTreat.forall { case (token, _, identity) =>
-          validPending(keys, token, fingerprint, identity)
+          validPending(keys)(token, (fingerprint, identity))
         })
 
         val toAdd = toTreat.map { case (token, _, identity) =>
@@ -205,27 +213,25 @@ case class Server(
         }
 
         requestVerifyLemma2(toTreat, fingerprint) // gives us:
-        Utils.assume(
-          toTreat.map { case (token, _, identity) =>
-            token -> (fingerprint, identity)
-          }.forall { case (k, (v1, v2)) => validPending(keys, k, v1, v2) }
-        )
-        assert(toAdd.forall {
-          case (token, value) =>
-            validPending(keys, token, value._1, value._2)
-        })
+        assert(toAdd.forall(validPending(keys)))
+
+        // requestVerifyLemma3(toAdd, fingerprint) // gives us:
+        // assert(toAdd.forall {
+        //   case (token, value) =>
+        //     validPending(keys, token, value._1, value._2)
+        // })
 
         // assert(toAdd.forall { case (k, (f, i)) => validPending(keys, k, f, i) })
 
         val newPending = pending ++ toAdd
 
-        assert(pending.forall(
-          (token: Token, value: (Fingerprint, Identity)) =>
-            validPending(keys, token, value._1, value._2)))
-        insertAllValidProp(pending, toAdd,
-          (token: Token, value: (Fingerprint, Identity)) =>
-            validPending(keys, token, value._1, value._2)
-        ) // gives us:
+        assert(pending.forall(validPending(keys)))
+          // (token: Token, value: (Fingerprint, Identity)) =>
+          //   validPending(keys, token, value._1, value._2)))
+        insertAllValidProp(pending, toAdd, validPending(keys))
+        //   (token: Token, value: (Fingerprint, Identity)) =>
+        //     validPending(keys, token, value._1, value._2)
+        // ) // gives us:
         assert(invPending(keys, newPending))
 
         pending = newPending
@@ -297,24 +303,29 @@ object ServerProperties {
   /** Invariant:
     *  - A key is valid if its fingerprint is registered in keys
     */
-  def validKey(fingerprint: Fingerprint, key: Key): Boolean = {
-    key.fingerprint == fingerprint
+  def fingerprintMatchKey(fk: (Fingerprint, Key)): Boolean = {
+    fk._2.fingerprint == fk._1
   }
 
-  def invKeys(keys: ListMap[Fingerprint, Key]) = keys.forall(validKey)
+  def invKeys(keys: ListMap[Fingerprint, Key]) = keys.forall(fingerprintMatchKey)
 
   /** Invariant:
     * - All keys must be registered via the correct fingerprint
     * - Upload tokens must be for valid keys
     */
+  def validUploaded(keys: ListMap[Fingerprint, Key])(tf: (Token, Fingerprint)) = {
+    keys.contains(tf._2)
+  }
+
   def invUploaded(keys: ListMap[Fingerprint, Key], uploaded: ListMap[Token, Fingerprint]) =
-    uploaded.forall { case (token, fingerprint) => keys.contains(fingerprint) }
+    uploaded.forall(validUploaded(keys))
 
   /** Invariant:
     * - Pending validations must be for valid keys
     * - Pending validations must be for identity addresses associated for the respective key
     */
-  def validPending(keys: ListMap[Fingerprint, Key], token: Token, fingerprint: Fingerprint, identity: Identity): Boolean = {
+  def validPending(keys: ListMap[Fingerprint, Key])(tfi: (Token, (Fingerprint, Identity))): Boolean = {
+    val (_, (fingerprint, identity)) = tfi
     keys.contains(fingerprint) && {
       val key = keys(fingerprint)
       key.identities.contains(identity)
@@ -322,9 +333,7 @@ object ServerProperties {
   }
 
   def invPending(keys: ListMap[Fingerprint, Key], pending: ListMap[Token, (Fingerprint, Identity)]) =
-    pending.forall { case (token, (fingerprint, identity)) =>
-      validPending(keys, token, fingerprint, identity)
-    }
+    pending.forall(validPending(keys))
 
   /** Invariant:
     * - Confirmed identity addresses must be for valid keys
@@ -468,7 +477,7 @@ object ServerLemmas {
   // def fingerprintKeyInverse(keys: ListMap[Fingerprint, Key], key: Key): Unit = {
   //   require(keys.contains(key.fingerprint) && invKeys(keys) && uniqueFingeprints)
 
-  //   applyForall(keys, validKey, key.fingerprint)
+  //   applyForall(keys, fingerprintMatchKey, key.fingerprint)
   //   assert(keys(key.fingerprint).fingerprint == key.fingerprint)
 
   //   assert(sameFingerprintSameKey((keys(key.fingerprint), key)))

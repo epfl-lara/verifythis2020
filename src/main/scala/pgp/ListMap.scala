@@ -71,8 +71,8 @@ case class ListMap[A, B](toList: List[(A, B)]) {
     case Cons(key, rest) => (this - key) -- rest
   }
 
-  def forall(p: (A, B) => Boolean): Boolean = {
-    toList.forall { case (a, b) => p(a, b) }
+  def forall(p: ((A, B)) => Boolean): Boolean = {
+    toList.forall(p)
   }
 }
 
@@ -82,7 +82,7 @@ object ListMap {
   object lemmas {
 
     @opaque
-    def addValidProp[A, B](lm: ListMap[A, B], p: (A, B) => Boolean, a: A, b: B): Unit = {
+    def addValidProp[A, B](lm: ListMap[A, B], p: ((A, B)) => Boolean, a: A, b: B): Unit = {
       require(lm.forall(p) && p(a, b))
       decreases(lm.toList.size)
 
@@ -94,8 +94,8 @@ object ListMap {
     )
 
     @opaque
-    def insertAllValidProp[A, B](lm: ListMap[A, B], kvs: List[(A, B)], p: (A, B) => Boolean): Unit = {
-      require(lm.forall(p) && kvs.forall { case (a, b) => p(a, b) })
+    def insertAllValidProp[A, B](lm: ListMap[A, B], kvs: List[(A, B)], p: ((A, B)) => Boolean): Unit = {
+      require(lm.forall(p) && kvs.forall(p))
       decreases(kvs)
 
       if (!kvs.isEmpty) {
@@ -142,7 +142,7 @@ object ListMap {
     )
 
     @opaque
-    def applyForall[A, B](lm: ListMap[A, B], p: (A, B) => Boolean, k: A): Unit = {
+    def applyForall[A, B](lm: ListMap[A, B], p: ((A, B)) => Boolean, k: A): Unit = {
       require(lm.forall(p) && lm.contains(k))
       decreases(lm.toList.size)
 
@@ -152,7 +152,7 @@ object ListMap {
     }.ensuring(_ => p(k, lm(k)))
 
     @opaque
-    def getForall[A, B](lm: ListMap[A, B], p: (A, B) => Boolean, k: A): Unit = {
+    def getForall[A, B](lm: ListMap[A, B], p: ((A, B)) => Boolean, k: A): Unit = {
       require(lm.forall(p))
       decreases(lm.toList.size)
 
