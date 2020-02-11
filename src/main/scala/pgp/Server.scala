@@ -276,19 +276,26 @@ case class Server(
    * Only if all addresses match the respective key, they will be invalidated.
    */
   def revoke(token: Token, identities: List[Identity]): Unit = {
+    require(invariant)
     if (managed.contains(token)) {
       val fingerprint = managed(token)
+
+      applyForall(managed, containedFingerprint(keys), token) // gives us:
       val key = keys(fingerprint)
 
-      applyForall(managed, containedFingerprint(keys), token)
 
       if (identities.content.subsetOf(key.identities.content)) {
-
         val newConfirmed = confirmed -- identities
+
+        removeAllValidProp(confirmed, identities, validConfirmed(keys)) // gives us:
+        assert(invConfirmed(keys, newConfirmed))
+
         confirmed = newConfirmed
+
+        assert(invConfirmed(keys, confirmed))
       }
     }
-  }
+  }.ensuring(_ => invariant)
 }
 
 

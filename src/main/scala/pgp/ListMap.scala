@@ -123,6 +123,19 @@ object ListMap {
     }
 
     @opaque
+    def removeAllValidProp[A, B](lm: ListMap[A, B], l: List[A], p: ((A, B)) => Boolean): Unit = {
+      require(lm.forall(p))
+      decreases(l)
+
+      if (!l.isEmpty)
+        removeAllValidProp(lm - l.head, l.tail, p)
+
+    }.ensuring { _ =>
+      val nlm = lm -- l
+      nlm.forall(p)
+    }
+
+    @opaque
     def filterStillContains[A, B](l: List[(A, B)], a1: A, a2: A): Unit = {
       require(a1 != a2)
       decreases(l)
