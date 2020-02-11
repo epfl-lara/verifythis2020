@@ -95,6 +95,19 @@ object ListMap {
     }
 
     @opaque
+    def removeValidProp[A, B](lm: ListMap[A, B], p: ((A, B)) => Boolean, a: A): Unit = {
+      require(lm.forall(p))
+      decreases(lm.toList.size)
+
+      if (!lm.isEmpty)
+        removeValidProp(lm.tail, p, a)
+
+    }.ensuring {_ =>
+      val nlm = lm - a
+      nlm.forall(p)
+    }
+
+    @opaque
     def insertAllValidProp[A, B](lm: ListMap[A, B], kvs: List[(A, B)], p: ((A, B)) => Boolean): Unit = {
       require(lm.forall(p) && kvs.forall(p))
       decreases(kvs)

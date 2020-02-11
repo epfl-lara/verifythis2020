@@ -32,8 +32,9 @@ case class Server(
    *
    */
   def byFingerprint(fingerprint: Fingerprint): Option[Key] = {
+    require(invariant)
     keys.get(fingerprint)
-  }
+  }.ensuring(_ => invariant)
 
   /**
    * Loop up keys by identity.
@@ -41,9 +42,10 @@ case class Server(
    * Note that the key identity is not assumed to be unique.
    */
   def byKeyId(keyId: KeyId): List[Key] = {
+    require(invariant)
     for ((fingerprint, key) <- keys.toList if key.keyId == keyId)
       yield key
-  }
+  }.ensuring(_ => invariant)
 
   @extern @pure
   private def notif(identity: Identity, email: EMail): Unit = {
@@ -76,7 +78,7 @@ case class Server(
     }
 
     key.restrictedTo(identities)
-  }
+  }.ensuring(_ => invariant)
 
 
   /**
@@ -156,38 +158,6 @@ case class Server(
     token
   }.ensuring(_ => invariant)
 
-  def requestVerifyLemma1(@induct l: List[Identity], fingerprint: Fingerprint): Unit = {
-    require(keys.contains(fingerprint) && l.forall(keys(fingerprint).identities.contains))
-
-  }.ensuring { _ =>
-    l.map { identity =>
-      val token = Token.unique
-      (token, EMail("verify", fingerprint, token), identity)
-    }.forall {
-      case (token, _, identity) =>
-        validPending(keys)(token, (fingerprint, identity))
-    }
-  }
-
-  def requestVerifyLemma2(@induct l: List[(Token, EMail, Identity)], fingerprint: Fingerprint): Unit = {
-    require(l.forall {
-      case (token, _, identity) =>
-        validPending(keys)(token, (fingerprint, identity))
-    })
-
-  }.ensuring { _ =>
-    l.map { case (token, _, identity) =>
-      token -> (fingerprint, identity)
-    }.forall(validPending(keys))
-  }
-
-  // def requestVerifyLemma3(@induct l: List[(Token, (Fingerprint, Identity))], fingerprint: Fingerprint): Unit = {
-  //   require(l.forall { case (k, (v1, v2)) => validPending(keys, k, v1, v2) })
-
-  // }.ensuring { _ =>
-  //   l.forall { case (k, v) => validPending(keys, k, v._1, v._2) }
-  // }
-
   /**
    * Request to verify a set of identity addresses, given a token returned by upload.
    *
@@ -212,7 +182,7 @@ case class Server(
           (Token.unique, EMail("verify", fingerprint, token), identity)
         }
 
-        requestVerifyLemma1(identities, fingerprint) // gives us:
+        requestVerifyLemma1(identities, keys, fingerprint) // gives us:
         assert(toTreat.forall { case (token, _, identity) =>
           validPending(keys)(token, (fingerprint, identity))
         })
@@ -221,26 +191,12 @@ case class Server(
           token -> (fingerprint, identity)
         }
 
-        requestVerifyLemma2(toTreat, fingerprint) // gives us:
+        requestVerifyLemma2(toTreat, keys, fingerprint) // gives us:
         assert(toAdd.forall(validPending(keys)))
-
-        // requestVerifyLemma3(toAdd, fingerprint) // gives us:
-        // assert(toAdd.forall {
-        //   case (token, value) =>
-        //     validPending(keys, token, value._1, value._2)
-        // })
-
-        // assert(toAdd.forall { case (k, (f, i)) => validPending(keys, k, f, i) })
 
         val newPending = pending ++ toAdd
 
-        assert(pending.forall(validPending(keys)))
-          // (token: Token, value: (Fingerprint, Identity)) =>
-          //   validPending(keys, token, value._1, value._2)))
-        insertAllValidProp(pending, toAdd, validPending(keys))
-        //   (token: Token, value: (Fingerprint, Identity)) =>
-        //     validPending(keys, token, value._1, value._2)
-        // ) // gives us:
+        insertAllValidProp(pending, toAdd, validPending(keys)) // gives us:
         assert(invPending(keys, newPending))
 
         pending = newPending
@@ -254,21 +210,39 @@ case class Server(
     }
   }.ensuring(_ => invariant)
 
-  // /**
-  //  * Verify an identity address by a token received via identity.
-  //  *
-  //  * Note that we keep the mapping in uploaded to allow further verifications.
-  //  */
-  // def verify(token: Token): Unit = {
-  //   if (pending.contains(token)) {
-  //     val (fingerprint, identity) = pending(token)
+  /**
+   * Verify an identity address by a token received via identity.
+   *
+   * Note that we keep the mapping in uploaded to allow further verifications.
+   */
+  def verify(token: Token): Unit = {
+    require(invariant)
+    if (pending.contains(token)) {
+      val (fingerprint, identity) = pending(token)
+      val newPending = pending - token
 
-  //     pending -= token // Affected invariant: inv_pending
+      applyForall(pending, validPending(keys), token) // gives us:
+      assert(validPending(keys)((token, (fingerprint, identity))))
 
-  //     assert(validConfirmed(keys, identity, fingerprint))
-  //     confirmed += (identity -> fingerprint) // Affected invariant: inv_confirmed
-  //   }
-  // }
+      removeValidProp(pending, validPending(keys), token) // gives us:
+      assert(invPending(keys, newPending))
+
+      pending = newPending
+
+      assert(invPending(keys, pending))
+
+      val newConfirmed = confirmed + (identity -> fingerprint)
+
+      assert(validConfirmed(keys)((identity, fingerprint)))
+
+      addValidProp(confirmed, validConfirmed(keys), identity, fingerprint) // gives us:
+      assert(invConfirmed(keys, newConfirmed))
+
+      confirmed = newConfirmed
+
+      assert(invConfirmed(keys, confirmed))
+    }
+  }.ensuring(_ => invariant)
 
   // /**
   //  * Request a management token for a given confirmed identity.
@@ -371,6 +345,31 @@ object ServerProperties {
 }
 
 object ServerLemmas {
+
+  def requestVerifyLemma1(@induct l: List[Identity], keys: ListMap[Fingerprint, Key], fingerprint: Fingerprint): Unit = {
+    require(keys.contains(fingerprint) && l.forall(keys(fingerprint).identities.contains))
+
+  }.ensuring { _ =>
+    l.map { identity =>
+      val token = Token.unique
+      (token, EMail("verify", fingerprint, token), identity)
+    }.forall {
+      case (token, _, identity) =>
+        validPending(keys)(token, (fingerprint, identity))
+    }
+  }
+
+  def requestVerifyLemma2(@induct l: List[(Token, EMail, Identity)], keys: ListMap[Fingerprint, Key], fingerprint: Fingerprint): Unit = {
+    require(l.forall {
+      case (token, _, identity) =>
+        validPending(keys)(token, (fingerprint, identity))
+    })
+
+  }.ensuring { _ =>
+    l.map { case (token, _, identity) =>
+      token -> (fingerprint, identity)
+    }.forall(validPending(keys))
+  }
 
   def invConfirmedFiltered(keys: ListMap[Fingerprint, Key], confirmed: ListMap[Identity, Fingerprint], fingerprint: Fingerprint): Unit = {
     require(invConfirmed(keys, confirmed))
