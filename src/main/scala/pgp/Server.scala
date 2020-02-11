@@ -63,7 +63,7 @@ case class Server(
     identities.forall(id => confirmed.get(id) == Some(fingerprint))
 
     invConfirmedFiltered(keys, confirmed, fingerprint) // gives us:
-    assert(identities.forall(identity => validConfirmed(keys, identity, fingerprint)))
+    assert(identities.forall(identity => validConfirmed(keys)((identity, fingerprint))))
 
     filteredLemma1(identities, keys, fingerprint) // gives us:
     assert(identities.isEmpty || identities.forall(key.identities.contains))
@@ -87,12 +87,8 @@ case class Server(
   def byEmail(identity: Identity): Option[Key] = {
     require(invariant)
     val fingerprintOpt = confirmed.get(identity)
-    getForall(
-      confirmed,
-      (p: (Identity, Fingerprint)) => validConfirmed(keys, p._1, p._2),
-      identity
-    )
-    assert(fingerprintOpt.forall(fingerprint => validConfirmed(keys, identity, fingerprint)))
+    getForall(confirmed, validConfirmed(keys), identity)
+    assert(fingerprintOpt.forall(fingerprint => validConfirmed(keys)((identity, fingerprint))))
     fingerprintOpt match {
       case None() => None[Key]()
       case Some(fingerprint) => Some[Key](filtered(fingerprint))
@@ -117,24 +113,24 @@ case class Server(
 
     val token = Token.unique
 
-    assert(fingerprintMatchKey(fingerprint, key))
+    val newKeys = keys + (fingerprint -> key)
 
     addValidProp(keys, fingerprintMatchKey, fingerprint, key) // gives us:
-    assert(invKeys(keys + (fingerprint -> key)))
+    assert(invKeys(newKeys))
 
     moreContainedKeys(keys, uploaded, fingerprint, key) // gives us:
-    assert(invUploaded(keys + (fingerprint -> key), uploaded))
+    assert(invUploaded(newKeys, uploaded))
 
     invPendingMoreKeys(keys, pending, fingerprint, key) // gives us:
-    assert(invPending(keys + (fingerprint -> key), pending))
+    assert(invPending(newKeys, pending))
 
     invConfirmedMoreKeys(keys, confirmed, fingerprint, key) // gives us:
-    assert(invConfirmed(keys + (fingerprint -> key), confirmed))
+    assert(invConfirmed(newKeys, confirmed))
 
     moreContainedKeys(keys, managed, fingerprint, key) // gives us:
-    assert(invManaged(keys + (fingerprint -> key), managed))
+    assert(invManaged(newKeys, managed))
 
-    keys += (fingerprint -> key)
+    keys = newKeys
 
     assert(invKeys(keys))
     assert(invUploaded(keys, uploaded))
@@ -142,15 +138,28 @@ case class Server(
     assert(invConfirmed(keys, confirmed))
     assert(invManaged(keys, managed))
 
-    uploaded += (token -> fingerprint)
+    val newUploaded = uploaded + (token -> fingerprint)
+
+    assert(uploaded.forall(containedFingerprint(keys)))
+    addValidProp(uploaded, containedFingerprint(keys), token, fingerprint) // gives us:
+    assert(newUploaded.forall(containedFingerprint(keys)))
+    assert(invUploaded(keys, uploaded + (token -> fingerprint)))
+
+    uploaded = newUploaded
+
+    assert(invKeys(keys))
+    assert(invUploaded(keys, uploaded))
+    assert(invPending(keys, pending))
+    assert(invConfirmed(keys, confirmed))
+    assert(invManaged(keys, managed))
 
     token
-  }
+  }.ensuring(_ => invariant)
 
   def requestVerifyLemma1(@induct l: List[Identity], fingerprint: Fingerprint): Unit = {
     require(keys.contains(fingerprint) && l.forall(keys(fingerprint).identities.contains))
 
-  } ensuring { _ =>
+  }.ensuring { _ =>
     l.map { identity =>
       val token = Token.unique
       (token, EMail("verify", fingerprint, token), identity)
@@ -166,7 +175,7 @@ case class Server(
         validPending(keys)(token, (fingerprint, identity))
     })
 
-  } ensuring { _ =>
+  }.ensuring { _ =>
     l.map { case (token, _, identity) =>
       token -> (fingerprint, identity)
     }.forall(validPending(keys))
@@ -175,7 +184,7 @@ case class Server(
   // def requestVerifyLemma3(@induct l: List[(Token, (Fingerprint, Identity))], fingerprint: Fingerprint): Unit = {
   //   require(l.forall { case (k, (v1, v2)) => validPending(keys, k, v1, v2) })
 
-  // } ensuring { _ =>
+  // }.ensuring { _ =>
   //   l.forall { case (k, v) => validPending(keys, k, v._1, v._2) }
   // }
 
@@ -190,7 +199,7 @@ case class Server(
     if (uploaded.contains(from)) {
       val fingerprint = uploaded(from)
 
-      applyForall(uploaded, validUploaded(keys), from) // gives us:
+      applyForall(uploaded, containedFingerprint(keys), from) // gives us:
       val key = keys(fingerprint)
 
       if (identities.content.subsetOf(key.identities.content)) {
@@ -309,16 +318,18 @@ object ServerProperties {
 
   def invKeys(keys: ListMap[Fingerprint, Key]) = keys.forall(fingerprintMatchKey)
 
+
   /** Invariant:
     * - All keys must be registered via the correct fingerprint
     * - Upload tokens must be for valid keys
     */
-  def validUploaded(keys: ListMap[Fingerprint, Key])(tf: (Token, Fingerprint)) = {
+  def containedFingerprint(keys: ListMap[Fingerprint, Key])(tf: (Token, Fingerprint)) = {
     keys.contains(tf._2)
   }
 
   def invUploaded(keys: ListMap[Fingerprint, Key], uploaded: ListMap[Token, Fingerprint]) =
-    uploaded.forall(validUploaded(keys))
+    uploaded.forall(containedFingerprint(keys))
+
 
   /** Invariant:
     * - Pending validations must be for valid keys
@@ -335,11 +346,13 @@ object ServerProperties {
   def invPending(keys: ListMap[Fingerprint, Key], pending: ListMap[Token, (Fingerprint, Identity)]) =
     pending.forall(validPending(keys))
 
+
   /** Invariant:
     * - Confirmed identity addresses must be for valid keys
     * - Confirmed identity must be valid for the associated key
     */
-  def validConfirmed(keys: ListMap[Fingerprint, Key], identity: Identity, fingerprint: Fingerprint): Boolean = {
+  def validConfirmed(keys: ListMap[Fingerprint, Key])(idf: (Identity, Fingerprint)): Boolean = {
+    val (identity, fingerprint) = idf
     keys.contains(fingerprint) && {
       val key = keys(fingerprint)
       key.identities.contains(identity)
@@ -347,13 +360,14 @@ object ServerProperties {
   }
 
   def invConfirmed(keys: ListMap[Fingerprint, Key], confirmed: ListMap[Identity, Fingerprint]) =
-    confirmed.forall { case (identity, fingerprint) => validConfirmed(keys, identity, fingerprint) }
+    confirmed.forall(validConfirmed(keys))
+
 
   /** Invariant:
     * - Management tokens must be for valid keys
     */
   def invManaged(keys: ListMap[Fingerprint, Key], managed: ListMap[Token, Fingerprint]) =
-    managed.forall { case (token, fingerprint) => keys.contains(fingerprint) }
+    managed.forall(containedFingerprint(keys))
 }
 
 object ServerLemmas {
@@ -366,15 +380,15 @@ object ServerLemmas {
       invConfirmedFiltered(keys, confirmed.tail, fingerprint)
 
   }.ensuring(_ =>
-    confirmed.keysOf(fingerprint).forall(identity => validConfirmed(keys, identity, fingerprint))
+    confirmed.keysOf(fingerprint).forall(identity => validConfirmed(keys)((identity, fingerprint)))
   )
 
   def filteredLemma1(identities: List[Identity], keys: ListMap[Fingerprint, Key], fingerprint: Fingerprint): Unit = {
-    require(identities.forall(identity => validConfirmed(keys, identity, fingerprint)))
+    require(identities.forall(identity => validConfirmed(keys)((identity, fingerprint))))
     decreases(identities.size)
 
     if (!identities.isEmpty) {
-      assert(validConfirmed(keys, identities.head, fingerprint))
+      assert(validConfirmed(keys)((identities.head, fingerprint)))
       check(keys.contains(fingerprint))
       val key = keys(fingerprint)
       filteredLemma1(identities.tail, keys, fingerprint)
@@ -390,7 +404,7 @@ object ServerLemmas {
     keys: ListMap[Fingerprint, Key], lm: ListMap[Token, Fingerprint],
     fingerprint: Fingerprint, key: Key
   ): Unit = {
-    require(lm.forall { case (token, fingerprint) => keys.contains(fingerprint) })
+    require(lm.forall(containedFingerprint(keys)))
     decreases(lm.toList.size)
 
     if (!lm.isEmpty) {
@@ -400,7 +414,7 @@ object ServerLemmas {
 
   }.ensuring { _ =>
     val newKeys = keys + (fingerprint -> key)
-    lm.forall { case (token, fingerprint) => newKeys.contains(fingerprint) }
+    lm.forall(containedFingerprint(newKeys))
   }
 
   def invPendingMoreKeys(
@@ -434,9 +448,10 @@ object ServerLemmas {
       }
     }
 
-  }.ensuring(_ =>
-    invPending(keys + (fingerprint, key), pending)
-  )
+  }.ensuring { _ =>
+    val newKeys = keys + (fingerprint -> key)
+    invPending(newKeys, pending)
+  }
 
   def invConfirmedMoreKeys(
     keys: ListMap[Fingerprint, Key], confirmed: ListMap[Identity, Fingerprint],
@@ -469,23 +484,8 @@ object ServerLemmas {
       }
     }
 
-  }.ensuring(_ =>
-    invConfirmed(keys + (fingerprint, key), confirmed)
-  )
-
-  // @opaque
-  // def fingerprintKeyInverse(keys: ListMap[Fingerprint, Key], key: Key): Unit = {
-  //   require(keys.contains(key.fingerprint) && invKeys(keys) && uniqueFingeprints)
-
-  //   applyForall(keys, fingerprintMatchKey, key.fingerprint)
-  //   assert(keys(key.fingerprint).fingerprint == key.fingerprint)
-
-  //   assert(sameFingerprintSameKey((keys(key.fingerprint), key)))
-
-  //   check(keys(key.fingerprint) == key)
-  //   ()
-
-  // }.ensuring(_ =>
-  //   keys(key.fingerprint) == key
-  // )
+  }.ensuring { _ =>
+    val newKeys = keys + (fingerprint -> key)
+    invConfirmed(newKeys, confirmed)
+  }
 }

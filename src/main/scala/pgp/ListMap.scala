@@ -89,9 +89,10 @@ object ListMap {
       if (!lm.isEmpty)
         addValidProp(lm.tail, p, a, b)
 
-    }.ensuring(_ =>
-      (lm + (a,b)).forall(p)
-    )
+    }.ensuring {_ =>
+      val nlm = lm + (a, b)
+      nlm.forall(p)
+    }
 
     @opaque
     def insertAllValidProp[A, B](lm: ListMap[A, B], kvs: List[(A, B)], p: ((A, B)) => Boolean): Unit = {
@@ -103,7 +104,10 @@ object ListMap {
         insertAllValidProp(lm + kvs.head, kvs.tail, p)
       }
 
-    }.ensuring(_ => (lm ++ kvs).forall(p))
+    }.ensuring { _ =>
+      val nlm = lm ++ kvs
+      nlm.forall(p)
+    }
 
     @opaque
     def filterStillContains[A, B](l: List[(A, B)], a1: A, a2: A): Unit = {
