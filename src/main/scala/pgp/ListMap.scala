@@ -89,7 +89,7 @@ object ListMap {
       if (!lm.isEmpty)
         addValidProp(lm.tail, p, a, b)
 
-    }.ensuring {_ =>
+    }.ensuring { _ =>
       val nlm = lm + (a, b)
       nlm.forall(p)
     }
@@ -97,12 +97,10 @@ object ListMap {
     @opaque
     def removeValidProp[A, B](lm: ListMap[A, B], p: ((A, B)) => Boolean, a: A): Unit = {
       require(lm.forall(p))
-      decreases(lm.toList.size)
 
-      if (!lm.isEmpty)
-        removeValidProp(lm.tail, p, a)
+      listFilterValidProp(lm.toList, p, (ab: (A, B)) => ab._1 != a)
 
-    }.ensuring {_ =>
+    }.ensuring { _ =>
       val nlm = lm - a
       nlm.forall(p)
     }
@@ -127,8 +125,10 @@ object ListMap {
       require(lm.forall(p))
       decreases(l)
 
-      if (!l.isEmpty)
+      if (!l.isEmpty) {
+        removeValidProp(lm, p, l.head)
         removeAllValidProp(lm - l.head, l.tail, p)
+      }
 
     }.ensuring { _ =>
       val nlm = lm -- l
